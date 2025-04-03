@@ -6,16 +6,19 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { PiggyBank } from 'lucide-react';
 
-export default function Login() {
+export default function Login({ setIsAuthenticated }: { setIsAuthenticated: (auth: boolean) => void }) {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const navigate = useNavigate();
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
-        // TODO: Implement actual authentication
-        if (email && password) {
+
+        if (email === "admin@example.com" && password === "admin123") {
+            setIsAuthenticated(true); // Update auth state
             navigate('/');
+        } else {
+            alert("Invalid email or password");
         }
     };
 
@@ -62,5 +65,4 @@ export default function Login() {
             </Card>
         </div>
     );
-
 }

@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ThemeProvider } from '@/components/theme-provider';
@@ -13,8 +14,13 @@ import Transactions from '@/pages/transactions';
 const queryClient = new QueryClient();
 
 function App() {
-  // TODO: Replace with actual auth check
-  const isAuthenticated = false;
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
+    return localStorage.getItem('isAuthenticated') === 'true';
+  });
+
+  useEffect(() => {
+    localStorage.setItem('isAuthenticated', String(isAuthenticated));
+  }, [isAuthenticated]);
 
   return (
     <QueryClientProvider client={queryClient}>
@@ -23,9 +29,7 @@ function App() {
           <Routes>
             <Route
               path="/login"
-              element={
-                isAuthenticated ? <Navigate to="/" replace /> : <Login />
-              }
+              element={<Login setIsAuthenticated={setIsAuthenticated} />}
             />
             <Route
               path="/*"
