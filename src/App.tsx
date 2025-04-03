@@ -1,0 +1,56 @@
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { ThemeProvider } from '@/components/theme-provider';
+import { Toaster } from '@/components/ui/sonner';
+import Layout from '@/components/layout';
+import Login from '@/pages/login';
+import Dashboard from '@/pages/dashboard';
+import Users from '@/pages/users';
+import Balances from '@/pages/balances';
+import Loans from '@/pages/loans';
+import Transactions from '@/pages/transactions';
+
+const queryClient = new QueryClient();
+
+function App() {
+  // TODO: Replace with actual auth check
+  const isAuthenticated = false;
+
+  return (
+    <QueryClientProvider client={queryClient}>
+      <ThemeProvider defaultTheme="light" storageKey="koperasi-theme">
+        <Router>
+          <Routes>
+            <Route
+              path="/login"
+              element={
+                isAuthenticated ? <Navigate to="/" replace /> : <Login />
+              }
+            />
+            <Route
+              path="/*"
+              element={
+                isAuthenticated ? (
+                  <Layout>
+                    <Routes>
+                      <Route path="/" element={<Dashboard />} />
+                      <Route path="/users" element={<Users />} />
+                      <Route path="/balances" element={<Balances />} />
+                      <Route path="/loans" element={<Loans />} />
+                      <Route path="/transactions" element={<Transactions />} />
+                    </Routes>
+                  </Layout>
+                ) : (
+                  <Navigate to="/login" replace />
+                )
+              }
+            />
+          </Routes>
+          <Toaster />
+        </Router>
+      </ThemeProvider>
+    </QueryClientProvider>
+  );
+}
+
+export default App;
