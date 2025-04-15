@@ -35,10 +35,9 @@ function App() {
               path="/*"
               element={
                 isAuthenticated ? (
-                  <Layout>
+                  <Layout setIsAuthenticated={setIsAuthenticated}>
                     <Routes>
-                      <Route path="/" element={<Dashboard />} />
-                      <Route path="/users" element={<Users />} />
+                      <Route path="/" element={<Users />} />
                       <Route path="/balances" element={<Balances />} />
                       <Route path="/loans" element={<Loans />} />
                       <Route path="/transactions" element={<Transactions />} />
@@ -49,6 +48,7 @@ function App() {
                 )
               }
             />
+
           </Routes>
           <Toaster />
         </Router>

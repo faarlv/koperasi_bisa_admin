@@ -1,39 +1,58 @@
 import { useState } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import {
-  LayoutDashboard,
   Users,
   Wallet,
-  PiggyBank,
   History,
   Menu,
   X,
   LogOut,
+ 
+  CoinsIcon,
+
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface LayoutProps {
   children: React.ReactNode;
 }
+import { createClient } from '@supabase/supabase-js';
 
 const sidebarItems = [
-  { path: '/', icon: LayoutDashboard, label: 'Dashboard' },
-  { path: '/users', icon: Users, label: 'Users' },
-  { path: '/balances', icon: Wallet, label: 'Balances' },
-  { path: '/loans', icon: PiggyBank, label: 'Loans' },
-  { path: '/transactions', icon: History, label: 'Transactions' },
+  { path: '/', icon: Users, label: 'Users' },
+  { path: '/balances', icon: Wallet, label: 'Saldo' },
+  { path: '/loans', icon: CoinsIcon, label: 'Pinjaman' },
+  { path: '/transactions', icon: History, label: 'Transaksi' },
 ];
 
-export default function Layout({ children }: LayoutProps) {
+export default function Layout({
+  children,
+  setIsAuthenticated,
+}: {
+  children: React.ReactNode;
+  setIsAuthenticated: (auth: boolean) => void;
+}) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const location = useLocation();
 
-  return (
+  const supabase = createClient(
+    import.meta.env.VITE_SUPABASE_URL!,
+    import.meta.env.VITE_SUPABASE_ANON_KEY!
+  );
+  
+  const navigate = useNavigate();
+
+  const handleLogout = async () => {
+      await supabase.auth.signOut();
+      setIsAuthenticated(false);
+      navigate('/login');
+  };
+
+  return ( 
     <div className="min-h-screen bg-background">
-      {/* Mobile sidebar toggle */}
       <Button
-        variant="ghost"
+        variant="secondary"
         size="icon"
         className="fixed top-4 left-4 z-50 md:hidden"
         onClick={() => setSidebarOpen(!sidebarOpen)}
@@ -41,7 +60,6 @@ export default function Layout({ children }: LayoutProps) {
         {sidebarOpen ? <X /> : <Menu />}
       </Button>
 
-      {/* Sidebar */}
       <aside
         className={cn(
           'fixed top-0 left-0 z-40 w-64 h-screen transition-transform bg-card border-r',
@@ -49,11 +67,12 @@ export default function Layout({ children }: LayoutProps) {
         )}
       >
         <div className="h-full px-3 py-4 flex flex-col">
-          <div className="flex items-center mb-10 px-2">
-            <PiggyBank className="h-6 w-6 text-primary mr-2" />
-            <h1 className="text-xl font-bold">Koperasi Admin</h1>
+          <div className="px-3 flex flex-col items-center mb-5">
+            <img src="../../assets/logo_koperasi.png" alt="" className="h-20 w-20 mb-2" />
+            <h1 className="text-xl font-bold text-center">Koperasi Dashboard</h1>
           </div>
-          
+
+
           <nav className="space-y-1 flex-1">
             {sidebarItems.map((item) => (
               <Link
@@ -63,7 +82,7 @@ export default function Layout({ children }: LayoutProps) {
                   'flex items-center px-2 py-2 text-sm rounded-lg',
                   location.pathname === item.path
                     ? 'bg-primary text-primary-foreground'
-                    : 'hover:bg-accent'
+                    : 'hover:bg-primary-foreground'
                 )}
               >
                 <item.icon className="h-5 w-5 mr-2" />
@@ -72,14 +91,13 @@ export default function Layout({ children }: LayoutProps) {
             ))}
           </nav>
 
-          <Button variant="ghost" className="justify-start mt-auto">
+          <Button variant="destructive" className="justify-start mt-auto" onClick={handleLogout}>
             <LogOut className="h-5 w-5 mr-2" />
             Logout
           </Button>
         </div>
       </aside>
 
-      {/* Main content */}
       <main
         className={cn(
           'transition-all duration-200 ease-in-out',

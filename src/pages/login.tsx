@@ -5,33 +5,50 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { PiggyBank } from 'lucide-react';
+import { createClient } from '@supabase/supabase-js';
 
 export default function Login({ setIsAuthenticated }: { setIsAuthenticated: (auth: boolean) => void }) {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const navigate = useNavigate();
 
-    const handleSubmit = (e: React.FormEvent) => {
+    const supabase = createClient(
+        import.meta.env.VITE_SUPABASE_URL!,
+        import.meta.env.VITE_SUPABASE_ANON_KEY!
+      );
+
+    const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
 
-        if (email === "admin@example.com" && password === "admin123") {
-            setIsAuthenticated(true); // Update auth state
-            navigate('/');
-        } else {
-            alert("Invalid email or password");
+        const { data, error } = await supabase.auth.signInWithPassword({
+            email,
+            password,
+        });
+
+        if (error || !data.user) {
+            alert('Login failed: ' + error?.message);
+            return;
         }
+
+        if (data.user.email !== 'admin@gmail.com') {
+            alert('Access denied: You are not an admin');
+            return;
+        }
+
+        setIsAuthenticated(true);
+        navigate('/');
     };
 
     return (
         <div className="h-screen flex items-center justify-center bg-background w-full">
             <Card className="w-[500px]">
-                <CardHeader className="space-y-2 text-center">
+                <CardHeader className="space-y-2 text-center flex flex-col items-center">
+                    <img src="../../assets/logo_koperasi.png" alt="" className='w-20 h-20' />
                     <div className="flex items-center justify-center gap-2 mb-2">
-                        <PiggyBank className="h-8 w-8 text-primary" />
-                        <CardTitle className="text-2xl">Koperasi Admin</CardTitle>
+                        <CardTitle className="text-2xl">Dashboard Koperasi</CardTitle>
                     </div>
                     <p className="text-sm text-muted-foreground">
-                        Enter your credentials to access the admin dashboard
+                        silahkan masukan akun admin
                     </p>
                 </CardHeader>
                 <CardContent>
@@ -41,7 +58,6 @@ export default function Login({ setIsAuthenticated }: { setIsAuthenticated: (aut
                             <Input
                                 id="email"
                                 type="email"
-                                placeholder="admin@example.com"
                                 value={email}
                                 onChange={(e) => setEmail(e.target.value)}
                                 required

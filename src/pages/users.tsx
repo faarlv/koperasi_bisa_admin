@@ -18,6 +18,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog';
+import { PaddingIcon } from '@radix-ui/react-icons';
 
 const supabase = createClient(
   import.meta.env.VITE_SUPABASE_URL!,
@@ -51,6 +52,7 @@ export default function Users() {
   const [openViewDialog, setOpenViewDialog] = useState(false);
   const [openEditDialog, setOpenEditDialog] = useState(false);
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
+  const [loading, setLoading] = useState(false);
   const [newUser, setNewUser] = useState({
     email: '',
     password: '',
@@ -63,7 +65,6 @@ export default function Users() {
     id_anggota: '',
   });
 
-  // Fetch data user dari Supabase
   useEffect(() => {
     async function fetchUsers() {
       const { data, error } = await supabase
@@ -81,17 +82,14 @@ export default function Users() {
     fetchUsers();
   }, []);
 
-  // Handle form input
   function handleChange(e: React.ChangeEvent<HTMLInputElement>) {
     setNewUser({ ...newUser, [e.target.name]: e.target.value });
   }
 
-  // Handle edit form input
   function handleEditChange(e: React.ChangeEvent<HTMLInputElement>) {
     setEditUser({ ...editUser, [e.target.name]: e.target.value });
   }
 
-  // Handle view button click
   function handleViewClick(user: User) {
     setSelectedUser(user);
     setOpenViewDialog(true);
@@ -100,10 +98,8 @@ export default function Users() {
 
   async function handleLocked(user: User) {
     try {
-      // Toggle the lock status
       const newLockStatus = !user.di_kunci;
 
-      // Update in Supabase
       const { error } = await supabase
         .from('biodata_anggota')
         .update({ di_kunci: newLockStatus })
@@ -113,19 +109,16 @@ export default function Users() {
         throw error;
       }
 
-      // Update local state
       setUsers(users.map(u =>
         u.id_anggota === user.id_anggota
           ? { ...u, di_kunci: newLockStatus }
           : u
       ));
 
-      // If the locked user is currently being viewed, update that state too
       if (selectedUser?.id_anggota === user.id_anggota) {
         setSelectedUser({ ...selectedUser, di_kunci: newLockStatus });
       }
 
-      // Show success message
       alert(`Biodata ${newLockStatus ? 'berhasil dikunci' : 'berhasil dibuka'}`);
     } catch (error) {
       console.error('Error updating lock status:', error);
@@ -133,7 +126,29 @@ export default function Users() {
     }
   }
 
-  // Handle edit button click
+  async function handleDelete(user: User) {
+    if (!confirm(`Yakin ingin menghapus anggota ${user.nama_lengkap}?`)) return;
+
+    try {
+      const { error } = await supabase
+        .from('biodata_anggota')
+        .delete()
+        .eq('id_anggota', user.id_anggota);
+
+      if (error) {
+        console.error('Gagal menghapus user:', error);
+        alert('Gagal menghapus user: ' + error.message);
+        return;
+      }
+
+      setUsers(users.filter((u) => u.id_anggota !== user.id_anggota));
+      alert('User berhasil dihapus!');
+    } catch (err) {
+      console.error(err);
+      alert('Terjadi kesalahan saat menghapus user');
+    }
+  }
+
   function handleEditClick(user: User) {
     setSelectedUser(user);
     setEditUser({
@@ -145,39 +160,55 @@ export default function Users() {
     setOpenViewDialog(false);
   }
 
-  // Handle submit untuk menambahkan user baru
   async function handleSubmit() {
+    setLoading(true);
     try {
-      // 1. Buat user di Supabase Auth
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: newUser.email,
         password: newUser.password,
       });
 
-      if (authError) {
-        alert('Gagal membuat akun: ' + authError.message);
+      if (authError || !authData.user) {
+        console.error('Auth error:', authError);
+        alert('Gagal membuat akun: ' + authError?.message);
         return;
       }
 
-      // 2. Simpan data ke `biodata_anggota`
       const { error: bioError } = await supabase.from('biodata_anggota').insert([
         {
-          id: authData.user?.id,  // Auth ID
-          id_anggota: newUser.id_anggota, // Custom ID
+          id: authData.user.id,
+          id_anggota: newUser.id_anggota,
           nama_lengkap: newUser.nama_lengkap,
-          email: newUser.email,  // Store email in biodata_anggota
+          email: newUser.email,
           created_at: new Date().toISOString(),
         },
       ]);
 
       if (bioError) {
+        console.error('Bio insert error:', bioError);
         alert('Gagal menyimpan biodata: ' + bioError.message);
+        return;
+      }
+
+      const { error: saldoError } = await supabase.from('saldo_anggota').insert([
+        {
+          id_anggota: newUser.id_anggota,
+          simpanan_pokok: 0,
+          simpanan_wajib: 0,
+          total_simpanan: 0,
+          updated_at: new Date().toISOString(),
+        },
+      ]);
+
+      if (saldoError) {
+        console.error('Saldo insert error:', saldoError);
+        alert('Gagal menyimpan saldo anggota: ' + saldoError.message);
         return;
       }
 
       alert('User berhasil ditambahkan!');
       setOpenAddDialog(false);
-      // Refresh user list
+
       const { data } = await supabase
         .from('biodata_anggota')
         .select('id_anggota, nama_lengkap, email, created_at')
@@ -186,15 +217,15 @@ export default function Users() {
     } catch (error) {
       console.error(error);
       alert('Terjadi kesalahan');
+    } finally {
+      setLoading(false);
     }
   }
 
-  // Handle submit untuk mengedit user
   async function handleEditSubmit() {
     if (!selectedUser) return;
 
     try {
-      // Update data di `biodata_anggota`
       const { error } = await supabase
         .from('biodata_anggota')
         .update({
@@ -211,7 +242,6 @@ export default function Users() {
 
       alert('User berhasil diupdate!');
       setOpenEditDialog(false);
-      // Refresh user list
       const { data } = await supabase
         .from('biodata_anggota')
         .select('id_anggota, nama_lengkap, email, created_at')
@@ -225,9 +255,8 @@ export default function Users() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div className="flex justify-between items-center">
-        <h2 className="text-3xl font-bold tracking-tight">Users</h2>
+        <h2 className="text-3xl font-bold tracking-tight">User</h2>
         <Dialog open={openAddDialog} onOpenChange={setOpenAddDialog}>
           <DialogTrigger asChild>
             <Button>
@@ -265,15 +294,14 @@ export default function Users() {
                 value={newUser.nama_lengkap}
                 onChange={handleChange}
               />
-              <Button onClick={handleSubmit} className="w-full">
-                Save User
+              <Button onClick={handleSubmit} disabled={loading} className="w-full bg-primary ">
+                {loading && <span>Loading...</span>}
               </Button>
             </div>
           </DialogContent>
         </Dialog>
       </div>
 
-      {/* Search Bar */}
       <div className="flex items-center space-x-2">
         <div className="relative flex-1 max-w-sm">
           <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
@@ -286,7 +314,6 @@ export default function Users() {
         </div>
       </div>
 
-      {/* Table User */}
       <div className="border rounded-lg">
         <Table>
           <TableHeader>
@@ -316,11 +343,10 @@ export default function Users() {
                       Active
                     </span>
                   )}
-
                 </TableCell>
                 <TableCell className="text-right space-x-2">
                   <Button
-                    variant="secondary"
+                    variant="outline"
                     size="sm"
                     onClick={() => handleLocked(user)}
                   >
@@ -335,14 +361,21 @@ export default function Users() {
                     )}
                   </Button>
                   <Button
-                    variant="secondary"
+                    variant="outline"
                     size="sm"
                     onClick={() => handleViewClick(user)}
                   >
                     Detail
                   </Button>
                   <Button
-                    variant="secondary"
+                    variant="destructive"
+                    size="sm"
+                    onClick={() => handleDelete(user)}
+                  >
+                    Delete
+                  </Button>
+                  <Button
+                    variant="default"
                     size="sm"
                     onClick={() => handleEditClick(user)}
                   >
@@ -355,14 +388,13 @@ export default function Users() {
         </Table>
       </div>
 
-      {/* View User Dialog */}
       <Dialog open={openViewDialog} onOpenChange={setOpenViewDialog}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>User Details</DialogTitle>
           </DialogHeader>
           {selectedUser && (
-            <div className="space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <h3 className="text-sm font-medium text-muted-foreground">Member ID</h3>
                 <p>{selectedUser.id_anggota}</p>
@@ -405,7 +437,7 @@ export default function Users() {
               </div>
               <div>
                 <h3 className="text-sm font-medium text-muted-foreground">Foto Anggota</h3>
-                <p>{selectedUser.foto_anggota || "belum di isi"}</p>
+                <img src={typeof selectedUser.foto_anggota === 'string' ? selectedUser.foto_anggota : "belum di isi"} alt="" className='h-30 w-30 p-5' />
               </div>
               <div>
                 <h3 className="text-sm font-medium text-muted-foreground">Email</h3>
@@ -418,9 +450,9 @@ export default function Users() {
             </div>
           )}
         </DialogContent>
+
       </Dialog>
 
-      {/* Edit User Dialog */}
       <Dialog open={openEditDialog} onOpenChange={setOpenEditDialog}>
         <DialogContent>
           <DialogHeader>
@@ -453,6 +485,6 @@ export default function Users() {
           )}
         </DialogContent>
       </Dialog>
-    </div>
+    </div >
   );
 }
