@@ -9,7 +9,8 @@ import Dashboard from '@/pages/dashboard';
 import Users from '@/pages/users';
 import Balances from '@/pages/balances';
 import Loans from '@/pages/loans';
-import Transactions from '@/pages/transactions';
+import Transactions from '@/pages/reset';
+import ResetPasswordPage from '@/pages/reset';
 
 const queryClient = new QueryClient();
 
@@ -40,7 +41,6 @@ function App() {
                       <Route path="/" element={<Users />} />
                       <Route path="/balances" element={<Balances />} />
                       <Route path="/loans" element={<Loans />} />
-                      <Route path="/transactions" element={<Transactions />} />
                     </Routes>
                   </Layout>
                 ) : (
@@ -48,6 +48,8 @@ function App() {
                 )
               }
             />
+            <Route path="/reset" element={<ResetPasswordPage />} />
+
 
           </Routes>
           <Toaster />

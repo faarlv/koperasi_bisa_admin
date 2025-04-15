@@ -23,7 +23,6 @@ const sidebarItems = [
   { path: '/', icon: Users, label: 'Users' },
   { path: '/balances', icon: Wallet, label: 'Saldo' },
   { path: '/loans', icon: CoinsIcon, label: 'Pinjaman' },
-  { path: '/transactions', icon: History, label: 'Transaksi' },
 ];
 
 export default function Layout({

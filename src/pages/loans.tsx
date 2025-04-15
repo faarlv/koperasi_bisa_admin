@@ -318,13 +318,14 @@ export default function LoanManagement() {
               <TableHeader>
                 <TableRow>
                   <TableHead>ID Pinjaman</TableHead>
-                  <TableHead>Member</TableHead>
-                  <TableHead>Loan Amount</TableHead>
-                  <TableHead>Total Amount</TableHead>
-                  <TableHead>Duration</TableHead>
+                  <TableHead>Nama</TableHead>
+                  <TableHead>Jumlah Pinjaman</TableHead>
+                  <TableHead>Total Pinjaman</TableHead>
                   <TableHead>Status</TableHead>
-                  <TableHead>Paid</TableHead>
-                  <TableHead>Installment</TableHead>
+                  <TableHead>Tenor</TableHead>
+                  <TableHead>Jenis</TableHead>
+                  <TableHead>Sudah dibayar</TableHead>
+                  <TableHead>Angsuran</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
@@ -346,6 +347,7 @@ export default function LoanManagement() {
                       </TableCell>
                       <TableCell>Rp {Number(loan.jumlah_pinjaman).toLocaleString('id-ID')}</TableCell>
                       <TableCell>Rp {Number(loan.total_pinjaman).toLocaleString('id-ID')}</TableCell>
+                      <TableCell>{loan.jenis_pinjaman}</TableCell>
                       <TableCell>{loan.durasi_pinjaman} months</TableCell>
                       <TableCell>
                         <Badge variant={

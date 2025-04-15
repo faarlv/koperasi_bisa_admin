@@ -183,6 +183,16 @@ export default function Balances() {
                 onChange={(e) => setSearchTerm(e.target.value)}
               />
             </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                fetchBalances();
+                setSearchTerm('');
+              }}
+            >
+              Refresh Tabel
+            </Button>
           </div>
           <div className="border rounded-lg">
             <Table>
@@ -233,6 +243,16 @@ export default function Balances() {
                 onChange={(e) => setTransactionSearchTerm(e.target.value)}
               />
             </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                fetchTransactions();
+                setSearchTerm('');
+              }}
+            >
+              Refresh Tabel
+            </Button>
           </div>
 
           <div className="border rounded-lg">

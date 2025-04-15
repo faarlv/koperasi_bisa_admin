@@ -1,4 +1,4 @@
-import { ReactNode, useEffect, useState } from 'react';
+import { ReactNode, useEffect, useMemo, useState } from 'react';
 import { createClient } from '@supabase/supabase-js';
 import {
   Table,
@@ -18,7 +18,6 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog';
-import { PaddingIcon } from '@radix-ui/react-icons';
 
 const supabase = createClient(
   import.meta.env.VITE_SUPABASE_URL!,
@@ -47,12 +46,12 @@ export default function Users() {
   }
 
   const [users, setUsers] = useState<User[]>([]);
-  const [searchQuery, setSearchQuery] = useState('');
   const [openAddDialog, setOpenAddDialog] = useState(false);
   const [openViewDialog, setOpenViewDialog] = useState(false);
   const [openEditDialog, setOpenEditDialog] = useState(false);
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
   const [newUser, setNewUser] = useState({
     email: '',
     password: '',
@@ -65,19 +64,19 @@ export default function Users() {
     id_anggota: '',
   });
 
-  useEffect(() => {
-    async function fetchUsers() {
-      const { data, error } = await supabase
-        .from('biodata_anggota')
-        .select('*')
-        .order('created_at', { ascending: false });
+  async function fetchUsers() {
+    const { data, error } = await supabase
+      .from('biodata_anggota')
+      .select('*')
+      .order('created_at', { ascending: false });
 
-      if (error) {
-        console.error('Error fetching users:', error);
-      } else {
-        setUsers(data);
-      }
+    if (error) {
+      console.error('Error fetching users:', error);
+    } else {
+      setUsers(data);
     }
+  }
+  useEffect(() => {
 
     fetchUsers();
   }, []);
@@ -95,6 +94,7 @@ export default function Users() {
     setOpenViewDialog(true);
     setOpenEditDialog(false);
   }
+
 
   async function handleLocked(user: User) {
     try {
@@ -253,6 +253,35 @@ export default function Users() {
     }
   }
 
+
+  const filteredUsers = useMemo(() => {
+    const keyword = searchTerm.toLowerCase();
+
+    return users.filter((item) => {
+      const idAnggota = String(item.id_anggota || '').toLowerCase();
+      const nama = String(item.nama_lengkap || '').toLowerCase();
+      const ktp = String(item.no_ktp || '').toLowerCase();
+      const tempatLahir = String(item.tempat_lahir || '').toLowerCase();
+      const tanggalLahir = String(item.tanggal_lahir || '').toLowerCase();
+      const kelamin = String(item.jenis_kelamin || '').toLowerCase();
+      const alamat = String(item.alamat || '').toLowerCase();
+      const telepon = String(item.no_telepon || '').toLowerCase();
+      const pekerjaan = String(item.pekerjaan || '').toLowerCase();
+
+      return (
+        idAnggota.includes(keyword) ||
+        nama.includes(keyword) ||
+        ktp.includes(keyword) ||
+        tempatLahir.includes(keyword) ||
+        tanggalLahir.includes(keyword) ||
+        kelamin.includes(keyword) ||
+        alamat.includes(keyword) ||
+        telepon.includes(keyword) ||
+        pekerjaan.includes(keyword)
+      );
+    });
+  }, [users, searchTerm]);
+
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
@@ -277,7 +306,6 @@ export default function Users() {
               />
               <Input
                 name="password"
-                type="password"
                 placeholder="Password"
                 value={newUser.password}
                 onChange={handleChange}
@@ -295,6 +323,7 @@ export default function Users() {
                 onChange={handleChange}
               />
               <Button onClick={handleSubmit} disabled={loading} className="w-full bg-primary ">
+                Tambah anggota -
                 {loading && <span>Loading...</span>}
               </Button>
             </div>
@@ -308,82 +337,97 @@ export default function Users() {
           <Input
             placeholder="Search users..."
             className="pl-8"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
           />
         </div>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => {
+            fetchUsers();
+            setSearchTerm('');
+          }}
+        >
+          Refresh Tabel
+        </Button>
       </div>
 
       <div className="border rounded-lg">
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Member ID</TableHead>
-              <TableHead>Name</TableHead>
+              <TableHead>ID Anggota</TableHead>
+              <TableHead>Nama</TableHead>
               <TableHead>Email</TableHead>
-              <TableHead>Join Date</TableHead>
-              <TableHead>Status</TableHead>
+              <TableHead>Tanggal Gabung</TableHead>
+              <TableHead>Status Bio</TableHead>
               <TableHead className="text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {users.map((user) => (
-              <TableRow key={user.id_anggota}>
-                <TableCell>{user.id_anggota}</TableCell>
-                <TableCell>{user.nama_lengkap || '-'}</TableCell>
-                <TableCell>{user.email || '-'}</TableCell>
-                <TableCell>{new Date(user.created_at).toLocaleDateString()}</TableCell>
-                <TableCell>
-                  {user.di_kunci ? (
-                    <span className="bg-red-100 text-red-800 text-xs font-medium px-2.5 py-0.5 rounded">
-                      Locked
-                    </span>
-                  ) : (
-                    <span className="bg-green-100 text-green-800 text-xs font-medium px-2.5 py-0.5 rounded">
-                      Active
-                    </span>
-                  )}
-                </TableCell>
-                <TableCell className="text-right space-x-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => handleLocked(user)}
-                  >
-                    {user.di_kunci ? (
-                      <>
-                        Buka
-                      </>
-                    ) : (
-                      <>
-                        Kunci
-                      </>
-                    )}
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => handleViewClick(user)}
-                  >
-                    Detail
-                  </Button>
-                  <Button
-                    variant="destructive"
-                    size="sm"
-                    onClick={() => handleDelete(user)}
-                  >
-                    Delete
-                  </Button>
-                  <Button
-                    variant="default"
-                    size="sm"
-                    onClick={() => handleEditClick(user)}
-                  >
-                    Edit
-                  </Button>
-                </TableCell>
+            {filteredUsers.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={8} className="text-center">Anggota tidak ditemukan...</TableCell>
               </TableRow>
-            ))}
+            ) :
+              (filteredUsers.map((user) => (
+                <TableRow key={user.id_anggota}>
+                  <TableCell>{user.id_anggota}</TableCell>
+                  <TableCell>{user.nama_lengkap || '-'}</TableCell>
+                  <TableCell>{user.email || '-'}</TableCell>
+                  <TableCell>{new Date(user.created_at).toLocaleDateString()}</TableCell>
+                  <TableCell>
+                    {user.di_kunci ? (
+                      <span className="bg-red-100 text-red-800 text-xs font-medium px-2.5 py-0.5 rounded">
+                        Di kunci
+                      </span>
+                    ) : (
+                      <span className="bg-green-100 text-green-800 text-xs font-medium px-2.5 py-0.5 rounded">
+                        Dapat di ubah
+                      </span>
+                    )}
+                  </TableCell>
+                  <TableCell className="text-right space-x-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleLocked(user)}
+                    >
+                      {user.di_kunci ? (
+                        <>
+                          Buka
+                        </>
+                      ) : (
+                        <>
+                          Kunci
+                        </>
+                      )}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleViewClick(user)}
+                    >
+                      Detail
+                    </Button>
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      onClick={() => handleDelete(user)}
+                    >
+                      Delete
+                    </Button>
+                    <Button
+                      variant="default"
+                      size="sm"
+                      onClick={() => handleEditClick(user)}
+                    >
+                      Edit
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              )))}
           </TableBody>
         </Table>
       </div>
