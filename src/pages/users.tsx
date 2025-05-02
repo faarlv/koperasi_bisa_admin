@@ -67,7 +67,7 @@ export default function Users() {
   async function fetchUsers() {
     const { data, error } = await supabase
       .from('biodata_anggota')
-      .select('*')
+      .select('id_anggota, nama_lengkap, email, created_at, no_ktp, tempat_lahir, tanggal_lahir, jenis_kelamin, alamat, no_telepon, di_kunci, pekerjaan, ktp_pasangan, foto_anggota')
       .order('created_at', { ascending: false });
 
     if (error) {
@@ -211,9 +211,23 @@ export default function Users() {
 
       const { data } = await supabase
         .from('biodata_anggota')
-        .select('id_anggota, nama_lengkap, email, created_at')
+        .select('id_anggota, nama_lengkap, email, created_at, no_ktp, tempat_lahir, tanggal_lahir, jenis_kelamin, alamat, no_telepon, di_kunci, pekerjaan, ktp_pasangan, foto_anggota')
         .order('created_at', { ascending: false });
-      setUsers(data || []);
+      setUsers(
+        (data || []).map((user) => ({
+          ...user,
+          no_ktp: user.no_ktp || null,
+          tempat_lahir: user.tempat_lahir || null,
+          tanggal_lahir: user.tanggal_lahir || null,
+          jenis_kelamin: user.jenis_kelamin || null,
+          alamat: user.alamat || null,
+          no_telepon: user.no_telepon || null,
+          di_kunci: user.di_kunci || false,
+          pekerjaan: user.pekerjaan || null,
+          ktp_pasangan: user.ktp_pasangan || null,
+          foto_anggota: user.foto_anggota || null,
+        }))
+      );
     } catch (error) {
       console.error(error);
       alert('Terjadi kesalahan');
@@ -244,9 +258,24 @@ export default function Users() {
       setOpenEditDialog(false);
       const { data } = await supabase
         .from('biodata_anggota')
-        .select('id_anggota, nama_lengkap, email, created_at')
+        .select('id_anggota, nama_lengkap, email, created_at, no_ktp, tempat_lahir, tanggal_lahir, jenis_kelamin, alamat, no_telepon, di_kunci, pekerjaan, ktp_pasangan, foto_anggota')
+
         .order('created_at', { ascending: false });
-      setUsers(data || []);
+      setUsers(
+        (data || []).map((user) => ({
+          ...user,
+          no_ktp: user.no_ktp || null,
+          tempat_lahir: user.tempat_lahir || null,
+          tanggal_lahir: user.tanggal_lahir || null,
+          jenis_kelamin: user.jenis_kelamin || null,
+          alamat: user.alamat || null,
+          no_telepon: user.no_telepon || null,
+          di_kunci: user.di_kunci || false,
+          pekerjaan: user.pekerjaan || null,
+          ktp_pasangan: user.ktp_pasangan || null,
+          foto_anggota: user.foto_anggota || null,
+        }))
+      );
     } catch (error) {
       console.error(error);
       alert('Terjadi kesalahan');
@@ -323,7 +352,7 @@ export default function Users() {
                 onChange={handleChange}
               />
               <Button onClick={handleSubmit} disabled={loading} className="w-full bg-primary ">
-                Tambah anggota -
+                Tambah anggota 
                 {loading && <span>Loading...</span>}
               </Button>
             </div>

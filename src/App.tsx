@@ -5,11 +5,9 @@ import { ThemeProvider } from '@/components/theme-provider';
 import { Toaster } from '@/components/ui/sonner';
 import Layout from '@/components/layout';
 import Login from '@/pages/login';
-import Dashboard from '@/pages/dashboard';
 import Users from '@/pages/users';
 import Balances from '@/pages/balances';
 import Loans from '@/pages/loans';
-import Transactions from '@/pages/reset';
 import ResetPasswordPage from '@/pages/reset';
 
 const queryClient = new QueryClient();

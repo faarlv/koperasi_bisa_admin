@@ -32,7 +32,7 @@ export default function ResetPasswordPage() {
     }
 
     setLoading(true);
-    const { error } = await supabase.auth.api.updateUserByEmail(token, {
+    const { error } = await supabase.auth.updateUser({
       password: newPassword,
     });
 

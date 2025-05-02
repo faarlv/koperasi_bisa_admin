@@ -26,24 +26,24 @@ const supabase = createClient(
 export default function LoanManagement() {
   const [loans, setLoans] = useState<any[]>([]);
   const [installments, setInstallments] = useState<any[]>([]);
-  const [members, setMembers] = useState<any[]>([]);
+  const [isViewModalOpen, setIsViewModalOpen] = useState(false);
+  // Removed unused 'members' state
   const [loading, setLoading] = useState({
     loans: true,
     installments: true
   });
-  const [error, setError] = useState<string | null>(null);
 
   const [isApproveModalOpen, setIsApproveModalOpen] = useState(false);
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [isRejectModalOpen, setIsRejectModalOpen] = useState(false);
   const [selectedLoan, setSelectedLoan] = useState<any>(null);
   const [searchTerm, setSearchTerm] = useState('');
-  const [isPaymentSubmitted, setIsPaymentSubmitted] = useState(false);
+  const [selectedTransaction, setSelectedTransaction] = useState<TransactionType | null>(null);
 
   const [paymentData, setPaymentData] = useState({
     jumlah_angsuran: 0,
     custom_payment: false,
-    pay_remaining: false // Add this new state
+    pay_remaining: false
   });
 
   useEffect(() => {
@@ -54,9 +54,13 @@ export default function LoanManagement() {
 
   const fetchAllData = useCallback(async () => {
     try {
-      await Promise.all([fetchLoans(), fetchInstallments(), fetchMembers()]);
+      await Promise.all([fetchLoans(), fetchInstallments()]);
     } catch (error) {
-      setError(error.message);
+      if (error instanceof Error) {
+        console.log(error.message);
+      } else {
+        console.log('An unknown error occurred:', error);
+      }
     }
   }, []);
 
@@ -91,15 +95,6 @@ export default function LoanManagement() {
     setLoading(prev => ({ ...prev, installments: false }));
   };
 
-  const fetchMembers = async () => {
-    const { data, error } = await supabase
-      .from('biodata_anggota')
-      .select('id_anggota, nama_lengkap');
-
-    if (!error) {
-      setMembers(data);
-    }
-  };
 
   const handleApproveLoan = async () => {
     if (!selectedLoan) return;
@@ -135,6 +130,8 @@ export default function LoanManagement() {
     }
   };
 
+
+
   const handlePaymentSubmit = async () => {
     try {
       if (!selectedLoan) return;
@@ -143,44 +140,37 @@ export default function LoanManagement() {
       const remaining = selectedLoan.total_pinjaman - (selectedLoan.total_dibayar || 0);
       const { custom_payment, jumlah_angsuran } = paymentData;
 
-      if (!custom_payment && jumlah_angsuran < recommendedPayment) {
-        alert("Remaining amount is smaller than recommended. Please use custom payment.");
+      const recommendedRounded = Math.floor(recommendedPayment);
+      const remainingRounded = Math.floor(remaining);
+      const amountRounded = Math.floor(jumlah_angsuran);
+
+      if (!custom_payment && amountRounded < recommendedRounded && amountRounded < remainingRounded) {
+        alert("Amount too small. Use custom payment or pay remaining balance.");
         return;
       }
 
-      if (jumlah_angsuran <= 0 || jumlah_angsuran > remaining) {
+      if (jumlah_angsuran <= 0 || jumlah_angsuran > remainingRounded) {
         alert("Invalid payment amount.");
         return;
       }
 
-      let angsuranKeToInsert = selectedLoan.angsuran_ke; // Default to current value
-      let shouldUpdateAngsuranKe = false;
+      const { data: lastAngsuran, error: fetchAngsuranError } = await supabase
+        .from("angsuran")
+        .select("angsuran_ke")
+        .eq("id_pinjaman", selectedLoan.id)
+        .order("angsuran_ke", { ascending: false })
+        .limit(1);
 
-      if (!custom_payment && jumlah_angsuran >= recommendedPayment) {
-        // Get the latest angsuran_ke
-        const { data: lastAngsuran, error: fetchAngsuranError } = await supabase
-          .from("angsuran")
-          .select("angsuran_ke")
-          .eq("id_pinjaman", selectedLoan.id)
-          .order("angsuran_ke", { ascending: false })
-          .limit(1);
-
-        if (fetchAngsuranError) {
-          alert("Failed to get angsuran data.");
-          console.error(fetchAngsuranError);
-          return;
-        }
-
-        const lastAngsuranKe = lastAngsuran?.[0]?.angsuran_ke || 0;
-        angsuranKeToInsert = lastAngsuranKe + 1;
-        shouldUpdateAngsuranKe = true;
-
-        if (angsuranKeToInsert > selectedLoan.durasi_pinjaman) {
-          alert("All installments have been paid.");
-          return;
-        }
+      if (fetchAngsuranError) {
+        alert("Failed to get angsuran data.");
+        console.error(fetchAngsuranError);
+        return;
       }
 
+      const lastAngsuranKe = lastAngsuran?.[0]?.angsuran_ke || 0;
+      const angsuranKeToInsert = lastAngsuranKe + 1;
+
+      // STEP 2: Insert new angsuran
       const { error: insertError } = await supabase.from("angsuran").insert([
         {
           id_anggota: selectedLoan.id_anggota,
@@ -196,23 +186,24 @@ export default function LoanManagement() {
         return;
       }
 
+      // STEP 3: Calculate new totals
       const newTotalDibayar = (selectedLoan.total_dibayar || 0) + jumlah_angsuran;
       const newRemaining = selectedLoan.total_pinjaman - newTotalDibayar;
 
+      // STEP 4: Prepare update
       const updates: any = {
         total_dibayar: newTotalDibayar,
+        angsuran_ke: angsuranKeToInsert,
+        sisa_angsuran: Math.max(selectedLoan.durasi_pinjaman - angsuranKeToInsert, 0),
         update_at: new Date().toISOString(),
       };
 
-      if (shouldUpdateAngsuranKe) {
-        updates.angsuran_ke = angsuranKeToInsert;
-        updates.sisa_angsuran = selectedLoan.durasi_pinjaman - angsuranKeToInsert;
-      }
-
+      // ✅ Make sure loan is marked completed if fully paid
       if (newRemaining <= 0) {
         updates.status_pinjaman = "completed";
       }
 
+      // STEP 5: Update pinjaman
       const { error: updateError } = await supabase
         .from("pinjaman")
         .update(updates)
@@ -225,14 +216,19 @@ export default function LoanManagement() {
       }
 
       alert("Payment recorded!");
-      setIsPaymentSubmitted(true);
       setIsPaymentModalOpen(false);
-      setPaymentData({ custom_payment: false, jumlah_angsuran: 0 });
+      setPaymentData({ custom_payment: false, jumlah_angsuran: 0, pay_remaining: false });
+
+      alert(jumlah_angsuran);
+      alert(remaining);
+
+
     } catch (error) {
       console.error("Error during payment submission:", error);
       alert("An error occurred while processing the payment.");
     }
   };
+
 
 
 
@@ -270,11 +266,12 @@ export default function LoanManagement() {
   });
 
 
-  const calculateRecommendedPayment = (loan: any) => {
-    const total = loan.total_pinjaman;
-    const duration = loan.durasi_pinjaman;
-    return Math.ceil(total / duration);
-  };
+  function calculateRecommendedPayment(loan) {
+    const remaining = loan.total_pinjaman - (loan.total_dibayar || 0);
+    const sisaAngsuran = Math.max(loan.durasi_pinjaman - (loan.angsuran_ke || 0), 1);
+    return Math.floor(remaining / sisaAngsuran); // or use Math.round, but be consistent!
+  }
+
 
 
   return (
@@ -347,7 +344,17 @@ export default function LoanManagement() {
                       </TableCell>
                       <TableCell>Rp {Number(loan.jumlah_pinjaman).toLocaleString('id-ID')}</TableCell>
                       <TableCell>Rp {Number(loan.total_pinjaman).toLocaleString('id-ID')}</TableCell>
-                      <TableCell>{loan.jenis_pinjaman}</TableCell>
+                      <TableCell>  <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          console.log('Selected loan:', loan);
+                          setSelectedLoan(loan);
+                          setIsViewModalOpen(true);
+                        }}
+                      >
+                        {loan.jenis_pinjaman}
+                      </Button> </TableCell>
                       <TableCell>{loan.durasi_pinjaman} months</TableCell>
                       <TableCell>
                         <Badge variant={
@@ -393,7 +400,8 @@ export default function LoanManagement() {
                               setSelectedLoan(loan);
                               setPaymentData({
                                 jumlah_angsuran: calculateRecommendedPayment(loan),
-                                custom_payment: false
+                                custom_payment: false,
+                                pay_remaining: false
                               });
                               setIsPaymentModalOpen(true);
                             }}
@@ -476,6 +484,27 @@ export default function LoanManagement() {
         </TabsContent>
       </Tabs>
 
+      <Dialog open={isViewModalOpen} onOpenChange={setIsViewModalOpen}>
+
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Transaction Details</DialogTitle>
+          </DialogHeader>
+          {selectedTransaction && (
+            <div className="space-y-4">
+              <p><strong>Transaction ID:</strong> {selectedTransaction.id}</p>
+              <p><strong>Member:</strong> {selectedTransaction.biodata_anggota?.nama_lengkap || "No Name"}</p>
+              <p><strong>Type:</strong> {selectedTransaction.jenis_transaksi}</p>
+              <p><strong>Amount:</strong> Rp {selectedTransaction.jumlah_transaksi.toLocaleString('id-ID')}</p>
+              <p><strong>Date:</strong> {new Date(selectedTransaction.created_at).toLocaleDateString('id-ID')}</p>
+            </div>
+          )}
+          <Button onClick={() => setIsViewModalOpen(false)} className="w-full">
+            Close
+          </Button>
+        </DialogContent>
+      </Dialog>
+
 
       <Dialog open={isApproveModalOpen} onOpenChange={setIsApproveModalOpen}>
         <DialogContent>
@@ -504,31 +533,35 @@ export default function LoanManagement() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={isRejectModalOpen} onOpenChange={setIsRejectModalOpen}>
+      <Dialog open={isViewModalOpen} onOpenChange={setIsViewModalOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Reject Loan Request</DialogTitle>
-            <DialogDescription>
-              Are you sure you want to reject this loan request?
-            </DialogDescription>
+            <DialogTitle>Loan Details</DialogTitle>
           </DialogHeader>
-          {selectedLoan && (
-            <div className="space-y-2">
-              <p><strong>Member:</strong> {selectedLoan.id_anggota} - {selectedLoan.biodata_anggota?.nama_lengkap || 'No Name'}</p>
-              <p><strong>Amount:</strong> Rp {Number(selectedLoan.jumlah_pinjaman).toLocaleString('id-ID')}</p>
-              <p><strong>Reason:</strong> {selectedLoan.deskripsi_pinjaman || 'No description provided'}</p>
+
+          {selectedLoan ? (
+            <div className="space-y-4">
+              <p><strong>Loan ID:</strong> {selectedLoan.id}</p>
+              <p><strong>Member:</strong> {selectedLoan.biodata_anggota?.nama_lengkap || "No Name"}</p>
+              <p><strong>Amount:</strong> Rp {selectedLoan.jumlah_pinjaman?.toLocaleString('id-ID') ?? '-'}</p>
+              <p><strong>Interest:</strong> {selectedLoan.jasa_pinjaman?.toLocaleString('id-ID') ?? '-'}%</p>
+              <p><strong>Total:</strong> Rp {selectedLoan.total_pinjaman?.toLocaleString('id-ID') ?? '-'}</p>
+              <p><strong>Duration:</strong> {selectedLoan.durasi_pinjaman ?? '-'} bulan</p>
+              <p><strong>Status:</strong> {selectedLoan.status_pinjaman || '-'}</p>
+              <p><strong>Type:</strong> {selectedLoan.jenis_pinjaman || '-'}</p>
+              <p><strong>Date:</strong> {selectedLoan.created_at ? new Date(selectedLoan.created_at).toLocaleDateString('id-ID') : '-'}</p>
             </div>
+          ) : (
+            <p>Loading...</p>
           )}
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsRejectModalOpen(false)}>
-              Cancel
-            </Button>
-            <Button variant="destructive" onClick={handleRejectLoan}>
-              Reject
-            </Button>
-          </DialogFooter>
+
+          <Button onClick={() => setIsViewModalOpen(false)} className="w-full">
+            Close
+          </Button>
         </DialogContent>
       </Dialog>
+
+
 
       <Dialog open={isPaymentModalOpen} onOpenChange={setIsPaymentModalOpen}>
         <DialogContent>

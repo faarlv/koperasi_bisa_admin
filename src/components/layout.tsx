@@ -4,7 +4,6 @@ import { Button } from '@/components/ui/button';
 import {
   Users,
   Wallet,
-  History,
   Menu,
   X,
   LogOut,
@@ -14,9 +13,6 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
-interface LayoutProps {
-  children: React.ReactNode;
-}
 import { createClient } from '@supabase/supabase-js';
 
 const sidebarItems = [
