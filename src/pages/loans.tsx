@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import { createClient } from '@supabase/supabase-js';
 import {
   Table,
@@ -27,18 +27,19 @@ export default function LoanManagement() {
   const [loans, setLoans] = useState<any[]>([]);
   const [installments, setInstallments] = useState<any[]>([]);
   const [isViewModalOpen, setIsViewModalOpen] = useState(false);
-  // Removed unused 'members' state
   const [loading, setLoading] = useState({
     loans: true,
     installments: true
   });
 
+  const [isRejectModalOpen, setIsRejectModalOpen] = useState(false);
   const [isApproveModalOpen, setIsApproveModalOpen] = useState(false);
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
-  const [isRejectModalOpen, setIsRejectModalOpen] = useState(false);
   const [selectedLoan, setSelectedLoan] = useState<any>(null);
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedTransaction, setSelectedTransaction] = useState<TransactionType | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [currentPageTransactions, setCurrentPageTransactions] = useState(1);
+
 
   const [paymentData, setPaymentData] = useState({
     jumlah_angsuran: 0,
@@ -47,10 +48,8 @@ export default function LoanManagement() {
   });
 
   useEffect(() => {
-    // Initial data fetch when component mounts
     fetchAllData();
-  }, []); // Runs only once on component mount
-
+  }, []);
 
   const fetchAllData = useCallback(async () => {
     try {
@@ -99,10 +98,17 @@ export default function LoanManagement() {
   const handleApproveLoan = async () => {
     if (!selectedLoan) return;
 
+    const baseDate = selectedLoan.created_at ? new Date(selectedLoan.created_at) : new Date();
+
+    const dueDate = new Date(baseDate);
+    dueDate.setMonth(dueDate.getMonth() + 1);
+    dueDate.setDate(10);
+
     const { error } = await supabase
       .from('pinjaman')
       .update({
         status_pinjaman: 'approved',
+        tanggal_pembayaran: dueDate.toISOString(),
         update_at: new Date().toISOString()
       })
       .eq('id', selectedLoan.id);
@@ -110,8 +116,12 @@ export default function LoanManagement() {
     if (!error) {
       setIsApproveModalOpen(false);
       await fetchLoans();
+    } else {
+      console.error("Failed to approve loan:", error);
+      alert("Gagal menyetujui pinjaman.");
     }
   };
+
 
   const handleRejectLoan = async () => {
     if (!selectedLoan) return;
@@ -125,11 +135,28 @@ export default function LoanManagement() {
       .eq('id', selectedLoan.id);
 
     if (!error) {
-      setIsRejectModalOpen(false);
       await fetchLoans();
     }
   };
 
+  const handleDeleteLoan = async (loanToDelete: any) => {
+    if (!loanToDelete?.id) return;
+
+    try {
+      const { error } = await supabase
+        .from('pinjaman')
+        .delete()
+        .eq('id', loanToDelete.id);
+
+      if (error) throw error;
+
+      await fetchLoans();
+      alert('Loan deleted successfully');
+    } catch (error) {
+      console.error('Delete error:', error);
+      alert('Failed to delete loan');
+    }
+  };
 
 
   const handlePaymentSubmit = async () => {
@@ -170,7 +197,6 @@ export default function LoanManagement() {
       const lastAngsuranKe = lastAngsuran?.[0]?.angsuran_ke || 0;
       const angsuranKeToInsert = lastAngsuranKe + 1;
 
-      // STEP 2: Insert new angsuran
       const { error: insertError } = await supabase.from("angsuran").insert([
         {
           id_anggota: selectedLoan.id_anggota,
@@ -186,24 +212,33 @@ export default function LoanManagement() {
         return;
       }
 
-      // STEP 3: Calculate new totals
       const newTotalDibayar = (selectedLoan.total_dibayar || 0) + jumlah_angsuran;
       const newRemaining = selectedLoan.total_pinjaman - newTotalDibayar;
 
-      // STEP 4: Prepare update
+      // Calculate next due date (tanggal_pembayaran)
+      let nextDueDate = selectedLoan.tanggal_pembayaran
+        ? new Date(selectedLoan.tanggal_pembayaran)
+        : new Date();
+
+      // Add 1 month to due date
+      const year = nextDueDate.getUTCFullYear();
+      const month = nextDueDate.getUTCMonth() + 1;
+      const day = nextDueDate.getUTCDate();
+
+      nextDueDate = new Date(Date.UTC(year, month, day));
+
       const updates: any = {
         total_dibayar: newTotalDibayar,
         angsuran_ke: angsuranKeToInsert,
         sisa_angsuran: Math.max(selectedLoan.durasi_pinjaman - angsuranKeToInsert, 0),
+        tanggal_pembayaran: nextDueDate.toISOString(),
         update_at: new Date().toISOString(),
       };
 
-      // ✅ Make sure loan is marked completed if fully paid
       if (newRemaining <= 0) {
         updates.status_pinjaman = "completed";
       }
 
-      // STEP 5: Update pinjaman
       const { error: updateError } = await supabase
         .from("pinjaman")
         .update(updates)
@@ -218,19 +253,12 @@ export default function LoanManagement() {
       alert("Payment recorded!");
       setIsPaymentModalOpen(false);
       setPaymentData({ custom_payment: false, jumlah_angsuran: 0, pay_remaining: false });
-
-      alert(jumlah_angsuran);
-      alert(remaining);
-
-
+      fetchLoans();
     } catch (error) {
       console.error("Error during payment submission:", error);
       alert("An error occurred while processing the payment.");
     }
   };
-
-
-
 
 
   const filteredLoans = loans.filter((loan) => {
@@ -266,11 +294,33 @@ export default function LoanManagement() {
   });
 
 
-  function calculateRecommendedPayment(loan) {
+  function calculateRecommendedPayment(loan: { total_pinjaman: number; total_dibayar: number; durasi_pinjaman: number; angsuran_ke: number; }) {
     const remaining = loan.total_pinjaman - (loan.total_dibayar || 0);
     const sisaAngsuran = Math.max(loan.durasi_pinjaman - (loan.angsuran_ke || 0), 1);
-    return Math.floor(remaining / sisaAngsuran); // or use Math.round, but be consistent!
+    return Math.floor(remaining / sisaAngsuran);
   }
+
+  const itemsPerPage = 10;
+
+  const paginatedLoans = useMemo(() => {
+    const start = (currentPage - 1) * itemsPerPage;
+    const end = start + itemsPerPage;
+    return filteredLoans.slice(start, end);
+  }, [filteredLoans, currentPage]);
+
+  const itemsPerPageTransactions = 15;
+
+  const paginatedTransactions = useMemo(() => {
+    const start = (currentPageTransactions - 1) * itemsPerPageTransactions;
+    const end = start + itemsPerPageTransactions;
+    return filteredAngsuran.slice(start, end); // filteredTransactions holds your transaction data
+  }, [filteredAngsuran, currentPageTransactions]);
+
+  const totalPagesTransactions = Math.ceil(filteredAngsuran.length / itemsPerPageTransactions);
+
+
+  const totalPagesLoans = Math.ceil(filteredLoans.length / itemsPerPage);
+
 
 
 
@@ -336,7 +386,7 @@ export default function LoanManagement() {
                     <TableCell colSpan={9} className="text-center">Request pinjaman tidak ditemukan..</TableCell>
                   </TableRow>
                 ) : (
-                  filteredLoans.map((loan) => (
+                  paginatedLoans.map((loan) => (
                     <TableRow key={loan.id}>
                       <TableCell>{loan.id}</TableCell>
                       <TableCell>
@@ -378,7 +428,7 @@ export default function LoanManagement() {
                                 setIsApproveModalOpen(true);
                               }}
                             >
-                              Approve
+                              Terima
                             </Button>
                             <Button
                               variant="destructive"
@@ -388,7 +438,7 @@ export default function LoanManagement() {
                                 setIsRejectModalOpen(true);
                               }}
                             >
-                              Reject
+                              Tolak
                             </Button>
                           </>
                         )}
@@ -415,6 +465,30 @@ export default function LoanManagement() {
                 )}
               </TableBody>
             </Table>
+            <div className="flex justify-between items-center p-4">
+              <p>
+                Page {currentPage} of {totalPagesLoans}
+              </p>
+              <div className="space-x-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={currentPage === 1}
+                  onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
+                >
+                  Previous
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={currentPage === totalPagesLoans}
+                  onClick={() => setCurrentPage((prev) => Math.min(prev + 1, totalPagesLoans))}
+                >
+                  Next
+                </Button>
+              </div>
+            </div>
+
           </div>
         </TabsContent>
         <TabsContent value="installments">
@@ -464,7 +538,7 @@ export default function LoanManagement() {
                     <TableCell colSpan={9} className="text-center">Request pinjaman tidak ditemukan..</TableCell>
                   </TableRow>
                 ) : (
-                  filteredAngsuran.map((installments) => (
+                  paginatedTransactions.map((installments) => (
                     <TableRow key={installments.idAnggota}>
                       <TableCell>{installments.id}</TableCell>
                       <TableCell>{installments.id_pinjaman}</TableCell>
@@ -480,30 +554,36 @@ export default function LoanManagement() {
                 )}
               </TableBody>
             </Table>
+            <div className="flex justify-between items-center p-4">
+              <p>
+                Page {currentPageTransactions} of {totalPagesTransactions}
+              </p>
+              <div className="space-x-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={currentPageTransactions === 1}
+                  onClick={() => setCurrentPageTransactions((prev) => Math.max(prev - 1, 1))}
+                >
+                  Previous
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={currentPageTransactions === totalPagesTransactions}
+                  onClick={() => setCurrentPageTransactions((prev) => Math.min(prev + 1, totalPagesTransactions))}
+                >
+                  Next
+                </Button>
+              </div>
+            </div>
+
           </div>
         </TabsContent>
       </Tabs>
 
-      <Dialog open={isViewModalOpen} onOpenChange={setIsViewModalOpen}>
 
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Transaction Details</DialogTitle>
-          </DialogHeader>
-          {selectedTransaction && (
-            <div className="space-y-4">
-              <p><strong>Transaction ID:</strong> {selectedTransaction.id}</p>
-              <p><strong>Member:</strong> {selectedTransaction.biodata_anggota?.nama_lengkap || "No Name"}</p>
-              <p><strong>Type:</strong> {selectedTransaction.jenis_transaksi}</p>
-              <p><strong>Amount:</strong> Rp {selectedTransaction.jumlah_transaksi.toLocaleString('id-ID')}</p>
-              <p><strong>Date:</strong> {new Date(selectedTransaction.created_at).toLocaleDateString('id-ID')}</p>
-            </div>
-          )}
-          <Button onClick={() => setIsViewModalOpen(false)} className="w-full">
-            Close
-          </Button>
-        </DialogContent>
-      </Dialog>
+
 
 
       <Dialog open={isApproveModalOpen} onOpenChange={setIsApproveModalOpen}>
@@ -533,30 +613,69 @@ export default function LoanManagement() {
         </DialogContent>
       </Dialog>
 
+      <Dialog open={isRejectModalOpen} onOpenChange={setIsRejectModalOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Tolak request pinjaman</DialogTitle>
+            <DialogDescription>
+              apakah anda yakin ingin menolak permohonan pinjaman ini?
+            </DialogDescription>
+          </DialogHeader>
+          {selectedLoan && (
+            <div className="space-y-2">
+              <p><strong>Member:</strong> {selectedLoan.id_anggota} - {selectedLoan.biodata_anggota?.nama_lengkap || 'No Name'}</p>
+              <p><strong>Amount:</strong> Rp {Number(selectedLoan.jumlah_pinjaman).toLocaleString('id-ID')}</p>
+              <p><strong>Duration:</strong> {selectedLoan.durasi_pinjaman} months</p>
+              <p><strong>Total to Repay:</strong> Rp {Number(selectedLoan.total_pinjaman).toLocaleString('id-ID')}</p>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsRejectModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={handleRejectLoan}>
+              Tolak
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={isViewModalOpen} onOpenChange={setIsViewModalOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Loan Details</DialogTitle>
+            <DialogTitle>Detail Pinjaman</DialogTitle>
           </DialogHeader>
 
           {selectedLoan ? (
             <div className="space-y-4">
-              <p><strong>Loan ID:</strong> {selectedLoan.id}</p>
-              <p><strong>Member:</strong> {selectedLoan.biodata_anggota?.nama_lengkap || "No Name"}</p>
-              <p><strong>Amount:</strong> Rp {selectedLoan.jumlah_pinjaman?.toLocaleString('id-ID') ?? '-'}</p>
-              <p><strong>Interest:</strong> {selectedLoan.jasa_pinjaman?.toLocaleString('id-ID') ?? '-'}%</p>
+              <p><strong>ID Pinjaman:</strong> {selectedLoan.id}</p>
+              <p><strong>Anggota:</strong> {selectedLoan.biodata_anggota?.nama_lengkap || "No Name"}</p>
+              <p><strong>Jumlah:</strong> Rp {selectedLoan.jumlah_pinjaman?.toLocaleString('id-ID') ?? '-'}</p>
+              <p><strong>biaya jasa:</strong> Rp {(selectedLoan.total_pinjaman - selectedLoan.jumlah_pinjaman).toLocaleString('id-ID') ?? '-'}</p>
               <p><strong>Total:</strong> Rp {selectedLoan.total_pinjaman?.toLocaleString('id-ID') ?? '-'}</p>
-              <p><strong>Duration:</strong> {selectedLoan.durasi_pinjaman ?? '-'} bulan</p>
+              <p><strong>Tenor:</strong> {selectedLoan.durasi_pinjaman ?? '-'} bulan</p>
               <p><strong>Status:</strong> {selectedLoan.status_pinjaman || '-'}</p>
-              <p><strong>Type:</strong> {selectedLoan.jenis_pinjaman || '-'}</p>
-              <p><strong>Date:</strong> {selectedLoan.created_at ? new Date(selectedLoan.created_at).toLocaleDateString('id-ID') : '-'}</p>
+              <p><strong>Jenis:</strong> {selectedLoan.jenis_pinjaman || '-'}</p>
+              <p><strong>Tanggal:</strong> {selectedLoan.created_at ? new Date(selectedLoan.created_at).toLocaleDateString('id-ID') : '-'}</p>
+              <p><strong>Tanggat Pembayaran:</strong> {selectedLoan.tanggal_pembayaran ? new Date(selectedLoan.tanggal_pembayaran).toLocaleDateString('id-ID') : '-'}</p>
             </div>
           ) : (
             <p>Loading...</p>
           )}
 
           <Button onClick={() => setIsViewModalOpen(false)} className="w-full">
-            Close
+            Tutup
+          </Button>
+          <Button
+            variant="destructive"
+            size="sm"
+            onClick={async () => {
+              if (confirm("Are you sure you want to delete this loan?")) {
+                await handleDeleteLoan(selectedLoan);
+              }
+            }}
+          >
+            Hapus
           </Button>
         </DialogContent>
       </Dialog>
@@ -566,9 +685,9 @@ export default function LoanManagement() {
       <Dialog open={isPaymentModalOpen} onOpenChange={setIsPaymentModalOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Make Payment</DialogTitle>
+            <DialogTitle>Konfirmasi Pembayaran Angsuran</DialogTitle>
             <DialogDescription>
-              Record payment for {selectedLoan?.id_anggota} - {selectedLoan?.biodata_anggota?.nama_lengkap || 'No Name'}
+              Pembayaran Angsuran : {selectedLoan?.id_anggota} - {selectedLoan?.biodata_anggota?.nama_lengkap || 'No Name'}
             </DialogDescription>
           </DialogHeader>
 
@@ -576,19 +695,19 @@ export default function LoanManagement() {
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <Label>Loan Amount</Label>
+                  <Label>Jumlah Pinjaman</Label>
                   <p>Rp {Number(selectedLoan.jumlah_pinjaman).toLocaleString('id-ID')}</p>
                 </div>
                 <div>
-                  <Label>Total to Repay</Label>
+                  <Label>Total Perlu Dibayar</Label>
                   <p>Rp {Number(selectedLoan.total_pinjaman).toLocaleString('id-ID')}</p>
                 </div>
                 <div>
-                  <Label>Installment</Label>
-                  <p>{selectedLoan.angsuran_ke + 1} of {selectedLoan.durasi_pinjaman}</p>
+                  <Label>Angsuran</Label>
+                  <p>{selectedLoan.angsuran_ke + 1} dari {selectedLoan.durasi_pinjaman}</p>
                 </div>
                 <div>
-                  <Label>Remaining</Label>
+                  <Label>Sisa Angsuran</Label>
                   <p>Rp {Number(selectedLoan.total_pinjaman - (selectedLoan.total_dibayar || 0)).toLocaleString('id-ID')}</p>
                 </div>
               </div>
@@ -605,7 +724,7 @@ export default function LoanManagement() {
                     jumlah_angsuran: 0,
                   })}
                 />
-                <Label htmlFor="custom_payment">Custom payment amount</Label>
+                <Label htmlFor="custom_payment">Pembayaran Custom</Label>
               </div>
 
               <div className="flex items-center space-x-2">
@@ -623,11 +742,11 @@ export default function LoanManagement() {
                     });
                   }}
                 />
-                <Label htmlFor="pay_remaining">Pay Remaining</Label>
+                <Label htmlFor="pay_remaining">Bayar Lunas</Label>
               </div>
 
               <div>
-                <Label htmlFor="jumlah_angsuran">Payment Amount</Label>
+                <Label htmlFor="jumlah_angsuran">Jumlah Pembayaran</Label>
                 <Input
                   id="jumlah_angsuran"
                   type="number"
@@ -640,7 +759,7 @@ export default function LoanManagement() {
                 />
                 {!paymentData.custom_payment && !paymentData.pay_remaining && (
                   <p className="text-sm text-muted-foreground mt-1">
-                    Recommended payment: Rp {calculateRecommendedPayment(selectedLoan).toLocaleString('id-ID')}
+                    Rekomendasi Pembayaran : Rp {calculateRecommendedPayment(selectedLoan).toLocaleString('id-ID')}
                   </p>
                 )}
               </div>
@@ -649,10 +768,10 @@ export default function LoanManagement() {
 
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsPaymentModalOpen(false)}>
-              Cancel
+              Tutup
             </Button>
             <Button onClick={handlePaymentSubmit}>
-              Record Payment
+              Bayar Pinjaman
             </Button>
           </DialogFooter>
         </DialogContent>
