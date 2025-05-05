@@ -63,7 +63,7 @@ export default function Layout({
       >
         <div className="h-full px-3 py-4 flex flex-col">
           <div className="px-3 flex flex-col items-center mb-5">
-            <img src="../../assets/logo_koperasi.png" alt="" className="h-20 w-20 mb-2" />
+            <img src="https://rjfqtggfziqjtqwwwzcl.supabase.co/storage/v1/object/public/profile-photos/profile-photos/logo_koperasi.png" alt="" className="h-20 w-20 mb-2" />
             <h1 className="text-xl font-bold text-center">Koperasi Dashboard</h1>
           </div>
 

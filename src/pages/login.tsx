@@ -29,7 +29,7 @@ export default function Login({ setIsAuthenticated }: { setIsAuthenticated: (aut
             return;
         }
 
-        if (data.user.email !== 'admin@gmail.com') {
+        if (data.user.email !== 'admin@gmail.com' && data.user.email !== 'admin@smkn2.oke') {
             alert('Access denied: You are not an admin');
             return;
         }
@@ -42,7 +42,7 @@ export default function Login({ setIsAuthenticated }: { setIsAuthenticated: (aut
         <div className="h-screen flex items-center justify-center bg-background w-full">
             <Card className="w-[500px]">
                 <CardHeader className="space-y-2 text-center flex flex-col items-center">
-                    <img src="../../assets/logo_koperasi.png" alt="" className='w-20 h-20' />
+                    <img src="https://rjfqtggfziqjtqwwwzcl.supabase.co/storage/v1/object/public/profile-photos/profile-photos/logo_koperasi.png" alt="" className='w-20 h-20' />
                     <div className="flex items-center justify-center gap-2 mb-2">
                         <CardTitle className="text-2xl">Dashboard Koperasi</CardTitle>
                     </div>
